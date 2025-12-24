@@ -1,0 +1,23 @@
+import { create } from 'zustand';
+import { User } from 'firebase/auth';
+import { UserData } from '@/lib/firebase/firestore';
+
+interface AuthState {
+  user: User | null;
+  userData: UserData | null;
+  loading: boolean;
+  
+  setUser: (user: User | null) => void;
+  setUserData: (userData: UserData | null) => void;
+  setLoading: (loading: boolean) => void;
+}
+
+export const useAuthStore = create<AuthState>((set) => ({
+  user: null,
+  userData: null,
+  loading: true,
+  
+  setUser: (user) => set({ user }),
+  setUserData: (userData) => set({ userData }),
+  setLoading: (loading) => set({ loading }),
+}));
