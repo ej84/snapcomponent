@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
 import { ImageUploader } from "@/components/dashboard/image-uploader";
 import { CodePreview } from "@/components/dashboard/code-preview";
@@ -12,11 +12,36 @@ import { toast } from "sonner";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, userData, loading } = useAuthStore();
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [isUpgrading, setIsUpgrading] = useState(false);
+
+  // ✅ URL 파라미터 체크
+  useEffect(() => {
+    const success = searchParams.get("success");
+    const canceled = searchParams.get("canceled");
+
+    if (success === "true") {
+      toast.success("Welcome to Pro! 🎉", {
+        description: "Your subscription is now active",
+      });
+      // URL 파라미터 제거
+      router.replace("/dashboard");
+    }
+
+    if (canceled === "true") {
+      toast.info("Upgrade canceled", {
+        description: "You can upgrade anytime",
+      });
+      // ✅ isUpgrading 상태 초기화
+      setIsUpgrading(false);
+      // URL 파라미터 제거
+      router.replace("/dashboard");
+    }
+  }, [searchParams, router]);
 
   // 로그인 체크
   useEffect(() => {

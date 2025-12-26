@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe/server';
 import { headers } from 'next/headers';
-import { upgradeUserToPro } from '@/lib/firebase/firestore';
-import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 
 export async function POST(request: NextRequest) {
@@ -37,11 +36,10 @@ export async function POST(request: NextRequest) {
 
   console.log('📥 Webhook event received:', event.type);
 
-  // Handle the event
   try {
     switch (event.type) {
       // =====================================
-      // CHECKOUT EVENTS
+      // 1. CHECKOUT SESSION COMPLETED (가장 먼저)
       // =====================================
       case 'checkout.session.completed': {
         const session = event.data.object;
@@ -49,28 +47,63 @@ export async function POST(request: NextRequest) {
         const customerId = session.customer as string;
         const subscriptionId = session.subscription as string;
 
-        console.log('✅ Checkout completed:', {
+        console.log('💳 Checkout completed:', {
           userId,
           customerId,
           subscriptionId,
+          metadata: session.metadata,
         });
 
-        if (userId && customerId) {
-          const success = await upgradeUserToPro(userId, customerId, subscriptionId);
-          
-          if (success) {
-            console.log('✅ User upgraded to Pro successfully');
-          } else {
-            console.error('❌ Failed to upgrade user');
+        if (!userId) {
+          console.error('❌ Missing userId in metadata');
+          return NextResponse.json(
+            { error: 'Missing userId in metadata' },
+            { status: 400 }
+          );
+        }
+
+        if (!customerId) {
+          console.error('❌ Missing customerId');
+          return NextResponse.json(
+            { error: 'Missing customerId' },
+            { status: 400 }
+          );
+        }
+
+        // ✅ userId로 직접 업데이트 (customerId로 검색하지 않음)
+        try {
+          const userRef = doc(db, 'users', userId);
+          const userDoc = await getDoc(userRef);
+
+          if (!userDoc.exists()) {
+            console.error('❌ User document not found:', userId);
+            return NextResponse.json(
+              { error: 'User not found' },
+              { status: 404 }
+            );
           }
-        } else {
-          console.error('❌ Missing userId or customerId');
+
+          // Pro로 업그레이드
+          await updateDoc(userRef, {
+            plan: 'pro',
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: subscriptionId,
+          });
+
+          console.log('✅ User upgraded to Pro:', {
+            userId,
+            customerId,
+            subscriptionId,
+          });
+        } catch (error: any) {
+          console.error('❌ Failed to upgrade user:', error);
+          throw error;
         }
         break;
       }
 
       // =====================================
-      // SUBSCRIPTION EVENTS
+      // 2. SUBSCRIPTION EVENTS
       // =====================================
       case 'customer.subscription.created': {
         const subscription = event.data.object;
@@ -83,19 +116,24 @@ export async function POST(request: NextRequest) {
           status: subscription.status,
         });
 
-        // Find user by stripeCustomerId
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('stripeCustomerId', '==', customerId));
-        const querySnapshot = await getDocs(q);
+        // ✅ customerId로 사용자 찾아서 subscription ID만 업데이트
+        try {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('stripeCustomerId', '==', customerId));
+          const querySnapshot = await getDocs(q);
 
-        if (!querySnapshot.empty) {
-          const userDoc = querySnapshot.docs[0];
-          await updateDoc(userDoc.ref, {
-            stripeSubscriptionId: subscriptionId,
-          });
-          console.log('✅ Subscription ID updated for user:', userDoc.id);
-        } else {
-          console.error('❌ User not found for customerId:', customerId);
+          if (!querySnapshot.empty) {
+            const userDoc = querySnapshot.docs[0];
+            await updateDoc(userDoc.ref, {
+              stripeSubscriptionId: subscriptionId,
+            });
+            console.log('✅ Subscription ID updated for user:', userDoc.id);
+          } else {
+            console.warn('⚠️ User not found for customerId:', customerId);
+            // 이건 경고만 (checkout.session.completed에서 이미 처리됨)
+          }
+        } catch (error: any) {
+          console.error('❌ Error updating subscription ID:', error);
         }
         break;
       }
@@ -112,25 +150,28 @@ export async function POST(request: NextRequest) {
           status,
         });
 
-        // Find user
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('stripeCustomerId', '==', customerId));
-        const querySnapshot = await getDocs(q);
+        try {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('stripeCustomerId', '==', customerId));
+          const querySnapshot = await getDocs(q);
 
-        if (!querySnapshot.empty) {
-          const userDoc = querySnapshot.docs[0];
-          
-          // Handle different statuses
-          if (status === 'active') {
-            await updateDoc(userDoc.ref, {
-              plan: 'pro',
-              stripeSubscriptionId: subscriptionId,
-            });
-            console.log('✅ Subscription activated for user:', userDoc.id);
-          } else if (status === 'canceled' || status === 'unpaid' || status === 'past_due') {
-            // Keep pro until period ends (handled by subscription.deleted)
-            console.log('⚠️ Subscription status changed to:', status);
+          if (!querySnapshot.empty) {
+            const userDoc = querySnapshot.docs[0];
+            
+            if (status === 'active') {
+              await updateDoc(userDoc.ref, {
+                plan: 'pro',
+                stripeSubscriptionId: subscriptionId,
+              });
+              console.log('✅ Subscription activated for user:', userDoc.id);
+            } else if (status === 'canceled' || status === 'unpaid' || status === 'past_due') {
+              console.log('⚠️ Subscription status changed to:', status);
+            }
+          } else {
+            console.warn('⚠️ User not found for customerId:', customerId);
           }
+        } catch (error: any) {
+          console.error('❌ Error updating subscription:', error);
         }
         break;
       }
@@ -138,122 +179,65 @@ export async function POST(request: NextRequest) {
       case 'customer.subscription.deleted': {
         const subscription = event.data.object;
         const customerId = subscription.customer as string;
-        const subscriptionId = subscription.id;
 
-        console.log('❌ Subscription deleted:', {
-          customerId,
-          subscriptionId,
-        });
+        console.log('❌ Subscription deleted:', customerId);
         
-        // Downgrade user to free plan
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('stripeCustomerId', '==', customerId));
-        const querySnapshot = await getDocs(q);
+        try {
+          const usersRef = collection(db, 'users');
+          const q = query(usersRef, where('stripeCustomerId', '==', customerId));
+          const querySnapshot = await getDocs(q);
 
-        if (!querySnapshot.empty) {
-          const userDoc = querySnapshot.docs[0];
-          await updateDoc(userDoc.ref, {
-            plan: 'free',
-            freeCredits: 5,
-            stripeSubscriptionId: null,
-          });
-          console.log('✅ User downgraded to free:', userDoc.id);
+          if (!querySnapshot.empty) {
+            const userDoc = querySnapshot.docs[0];
+            await updateDoc(userDoc.ref, {
+              plan: 'free',
+              freeCredits: 5,
+              stripeSubscriptionId: null,
+            });
+            console.log('✅ User downgraded to free:', userDoc.id);
+          } else {
+            console.warn('⚠️ User not found for customerId:', customerId);
+          }
+        } catch (error: any) {
+          console.error('❌ Error downgrading user:', error);
         }
         break;
       }
 
       // =====================================
-      // INVOICE EVENTS
+      // 3. INVOICE EVENTS (로그만)
       // =====================================
-      case 'invoice.created': {
-        const invoice = event.data.object;
-        console.log('✅ Invoice created:', invoice.id);
+      case 'invoice.created':
+      case 'invoice.finalized':
+      case 'invoice.paid':
+      case 'invoice.payment_succeeded':
+        console.log('✅ Invoice event:', event.type);
         break;
-      }
 
-      case 'invoice.finalized': {
-        const invoice = event.data.object;
-        console.log('✅ Invoice finalized:', invoice.id);
+      case 'invoice.payment_failed':
+        console.log('❌ Invoice payment failed');
         break;
-      }
-
-      case 'invoice.paid': {
-        const invoice = event.data.object;
-        console.log('✅ Invoice paid:', invoice.id);
-        // Subscription is already active, no action needed
-        break;
-      }
-
-      case 'invoice.payment_succeeded': {
-        const invoice = event.data.object;
-        console.log('✅ Invoice payment succeeded:', invoice.id);
-        // Could send receipt email here
-        break;
-      }
-
-      case 'invoice.payment_failed': {
-        const invoice = event.data.object;
-        console.log('❌ Invoice payment failed:', invoice.id);
-        // Could send payment failure notification
-        // Consider: pause subscription after X failures
-        break;
-      }
 
       // =====================================
-      // PAYMENT EVENTS
+      // 4. PAYMENT EVENTS (로그만)
       // =====================================
-      case 'payment_intent.created': {
-        const paymentIntent = event.data.object;
-        console.log('✅ Payment intent created:', paymentIntent.id);
+      case 'payment_intent.created':
+      case 'payment_intent.succeeded':
+      case 'payment_method.attached':
+      case 'charge.succeeded':
+        console.log('✅ Payment event:', event.type);
         break;
-      }
-
-      case 'payment_intent.succeeded': {
-        const paymentIntent = event.data.object;
-        console.log('✅ Payment intent succeeded:', paymentIntent.id);
-        break;
-      }
-
-      case 'payment_method.attached': {
-        const paymentMethod = event.data.object;
-        console.log('✅ Payment method attached:', paymentMethod.id);
-        break;
-      }
-
-      case 'charge.succeeded': {
-        const charge = event.data.object;
-        console.log('✅ Charge succeeded:', charge.id);
-        break;
-      }
 
       // =====================================
-      // CUSTOMER EVENTS
+      // 5. CUSTOMER EVENTS (로그만)
       // =====================================
-      case 'customer.created': {
-        const customer = event.data.object;
-        console.log('✅ Customer created:', customer.id);
+      case 'customer.created':
+      case 'customer.updated':
+        console.log('✅ Customer event:', event.type);
         break;
-      }
 
-      case 'customer.updated': {
-        const customer = event.data.object;
-        console.log('✅ Customer updated:', customer.id);
-        break;
-      }
-
-      case 'customer.subscription.trial_will_end': {
-        const subscription = event.data.object;
-        console.log('⚠️ Trial ending soon for subscription:', subscription.id);
-        // Could send reminder email here
-        break;
-      }
-
-      // =====================================
-      // UNHANDLED EVENTS (LOG ONLY)
-      // =====================================
       default:
         console.log('ℹ️ Unhandled event type:', event.type);
-        // Log unhandled events for monitoring
     }
   } catch (error: any) {
     console.error('❌ Error processing webhook:', error);
