@@ -1,26 +1,5 @@
 "use client";
 
-import { Suspense } from "react";
-import DashboardContent from "./dashboard-content";
-import { Loader2 } from "lucide-react";
-
-export default function DashboardPage() {
-  return (
-    <Suspense fallback={<DashboardLoading />}>
-      <DashboardContent />
-    </Suspense>
-  );
-}
-
-function DashboardLoading() {
-  return (
-    <div className="flex h-screen items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin" />
-    </div>
-  );
-}
-
-/*
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth-store";
@@ -31,7 +10,7 @@ import { Loader2, Crown } from "lucide-react";
 import { signOut } from "@/lib/firebase/auth";
 import { toast } from "sonner";
 
-export default function DashboardPage() {
+export default function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, userData, loading } = useAuthStore();
@@ -172,7 +151,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      
+      {/* Header */}
       <header className="border-b">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <h1 className="text-2xl font-bold">SnapComponent</h1>
@@ -227,16 +206,16 @@ export default function DashboardPage() {
         </div>
       </header>
 
-     
+      {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="mx-auto max-w-6xl space-y-8">
-      
+          {/* Upload Section */}
           <section>
             <h2 className="mb-4 text-xl font-semibold">Upload Screenshot</h2>
             <ImageUploader onImageUploaded={setUploadedImage} />
           </section>
 
-     
+          {/* Convert Button */}
           {uploadedImage && !generatedCode && (
             <section className="flex justify-center">
               <Button size="lg" onClick={handleConvert} disabled={isConverting}>
@@ -252,7 +231,7 @@ export default function DashboardPage() {
             </section>
           )}
 
-       
+          {/* Code Preview */}
           {generatedCode && (
             <section>
               <div className="mb-4 flex items-center justify-between">
@@ -275,4 +254,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-*/
