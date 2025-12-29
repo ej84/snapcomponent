@@ -82,6 +82,29 @@ export default function RootLayout({
           <Toaster /> {/* Sonner Toaster */}
         </AuthProvider>
       </body>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "SnapComponent",
+            applicationCategory: "DeveloperApplication",
+            operatingSystem: "Web",
+            offers: {
+              "@type": "Offer",
+              price: "0",
+              priceCurrency: "USD",
+            },
+            aggregateRating: {
+              "@type": "AggregateRating",
+              ratingValue: "5",
+              ratingCount: "1",
+            },
+            description: "Convert UI screenshots to React components with AI",
+          }),
+        }}
+      />
     </html>
   );
 }
