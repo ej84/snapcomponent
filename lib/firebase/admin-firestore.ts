@@ -15,11 +15,11 @@ export async function getUserDataAdmin(userId: string): Promise<UserData | null>
 
     const data = userDoc.data()!;
     
-    console.log('✅ [Admin] User data found:', {
+    /*console.log('✅ [Admin] User data found:', {
       userId,
       plan: data.plan,
       credits: data.freeCredits,
-    });
+    });*/
     
     return {
       email: data.email,

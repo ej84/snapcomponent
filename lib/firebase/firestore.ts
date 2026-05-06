@@ -48,12 +48,12 @@ export async function getUserData(userId: string): Promise<UserData | null> {
 
     const data = userDoc.data();
     
-    console.log('✅ User data found:', {
+    /*console.log('✅ User data found:', {
       userId,
       plan: data.plan,
       credits: data.freeCredits,
       subscriptionId: data.stripeSubscriptionId || 'none',
-    });
+    });*/
     
     return {
       email: data.email,

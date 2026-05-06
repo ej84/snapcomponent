@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { convertImageToCode } from '@/lib/openai/client';
-import { getUserData, useCredit, saveConversion } from '@/lib/firebase/firestore';
+import { getUserData, useCredit } from '@/lib/firebase/firestore';
+import { adminDb } from '@/lib/firebase/admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 // Vercel 타임아웃 60초로 설정 (Pro 플랜이면 300까지 가능)
 export const maxDuration = 60;
@@ -36,22 +38,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user data
-    console.log('🔍 Attempting to get user data for userId:', userId);
+    //console.log('🔍 Getting user data for userId:', userId);
     const userData = await getUserData(userId);
-    console.log('📊 getUserData result:', userData);
 
     if (!userData) {
-      console.error('❌ User not found in Firestore for userId:', userId);
+      console.error('❌ User not found:', userId);
       return NextResponse.json(
         { error: 'User not found', userId },
         { status: 404 }
       );
     }
 
-    console.log('✅ User found:', {
-      plan: userData.plan,
-      credits: userData.freeCredits,
-    });
+    //console.log('✅ User found:', { plan: userData.plan, credits: userData.freeCredits });
 
     // 크레딧 잔액 확인만 (아직 차감 안 함)
     if (userData.plan === 'free' && (userData.freeCredits || 0) <= 0) {
@@ -62,10 +60,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert image to code using OpenAI (크레딧 차감 전에 먼저 시도)
+    // Convert image to code (크레딧 차감 전에 먼저 변환 시도)
     console.log('🤖 Converting image with OpenAI...');
 
-    const TIMEOUT_MS = 55000; // Vercel maxDuration(60s)보다 5초 여유
+    const TIMEOUT_MS = 55000;
     let code: string;
 
     try {
@@ -80,7 +78,6 @@ export async function POST(request: NextRequest) {
       ]);
     } catch (conversionError: any) {
       console.error('❌ Conversion failed:', conversionError.message);
-      // 변환 실패 시 크레딧 차감하지 않음
       return NextResponse.json(
         { error: conversionError.message || 'Failed to convert image' },
         { status: 500 }
@@ -89,29 +86,34 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Code generated, length:', code.length);
 
-    // 변환 성공 후에 크레딧 차감
-    console.log('💳 Deducting credit after successful conversion...');
+    // 변환 성공 후 크레딧 차감
+    console.log('💳 Deducting credit...');
     const canUse = await useCredit(userId);
 
     if (!canUse) {
-      // 혹시 동시 요청으로 크레딧이 이미 소진된 경우
-      console.error('❌ Credit deduction failed (likely already exhausted)');
+      console.error('❌ Credit deduction failed');
       return NextResponse.json(
         { error: 'No credits remaining. Please upgrade to Pro.' },
         { status: 403 }
       );
     }
 
-    console.log('✅ Credit deducted successfully');
+    console.log('✅ Credit deducted');
 
-    // Save conversion to Firestore
-    console.log('💾 Saving conversion...');
-    const result = await saveConversion(userId, imageUrl, code, false);
-
-    if (result.error) {
-      console.error('⚠️ Failed to save conversion:', result.error);
-    } else {
-      console.log('✅ Conversion saved with ID:', result.id);
+    // Firebase Admin SDK로 Firestore에 저장 (Security Rules 우회)
+    console.log('💾 Saving conversion via Admin SDK...');
+    try {
+      const docRef = await adminDb.collection('conversions').add({
+        userId,
+        imageUrl,
+        generatedCode: code,
+        isPublic: false,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      console.log('✅ Conversion saved with ID:', docRef.id);
+    } catch (saveError: any) {
+      // 저장 실패해도 유저한테는 코드를 돌려줌 (크레딧은 이미 차감됐으므로)
+      console.error('⚠️ Failed to save conversion:', saveError.message);
     }
 
     const response = {
@@ -123,13 +125,11 @@ export async function POST(request: NextRequest) {
           : 'unlimited',
     };
 
-    console.log('✅ API Response:', { ...response, code: `${code.length} chars` });
+    console.log('✅ API Response sent:', { codeLength: code.length });
     return NextResponse.json(response);
 
   } catch (error: any) {
     console.error('💥 API error:', error);
-    console.error('Stack:', error.stack);
-
     return NextResponse.json(
       {
         error: error.message || 'Failed to convert image',
