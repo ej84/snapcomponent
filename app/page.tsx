@@ -140,7 +140,7 @@ export default function Home() {
             />
             <PricingCard
               name="Pro"
-              price="$12"
+              price="$7.99"
               period="/month"
               features={[
                 "Unlimited conversions",

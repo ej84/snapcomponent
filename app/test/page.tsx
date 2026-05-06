@@ -2,31 +2,54 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select } from "@/components/ui/select";
 
-const SignUpForm: React.FC = () => {
+import {
+  Mail,
+  Phone,
+  MapPin,
+  Github,
+  Linkedin,
+  Twitter,
+  Dribbble,
+} from "lucide-react";
+
+const PricingCard: React.FC = () => {
   return (
-    <div className="flex justify-center items-center min-h-screen">
-      <div className="bg-white p-8 rounded-lg shadow-md w-80">
-        <h2 className="text-xl font-bold text-center mb-4">
-          Sign up for Users
-        </h2>
-        <form>
-          <label className="block mb-2 text-sm font-medium">
-            Email Address:
-          </label>
-          <Input
-            type="email"
-            placeholder="Enter your email"
-            className="w-full mb-4"
-          />
-          <Button className="w-full mb-4 bg-blue-500 text-white">Submit</Button>
-        </form>
-        <p className="text-center text-sm text-gray-500">
-          Email added successfully!
-        </p>
+    <div className="max-w-sm p-6 bg-white rounded-lg shadow-md">
+      <div className="flex items-center mb-4">
+        <span className="px-2 py-1 text-sm font-semibold text-white bg-yellow-500 rounded-full">
+          Starter
+        </span>
       </div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">Starter</h2>
+        <span className="text-xl">$10/mo</span>
+      </div>
+      <ul className="mb-6 space-y-2">
+        <li className="flex items-center">
+          <span className="text-green-500 mr-2">✔</span>
+          Basic image generation
+        </li>
+        <li className="flex items-center">
+          <span className="text-green-500 mr-2">✔</span>
+          Access to templates
+        </li>
+        <li className="flex items-center text-gray-400">
+          <span className="mr-2">✔</span>
+          Feature 3
+        </li>
+        <li className="flex items-center text-gray-400">
+          <span className="mr-2">✔</span>
+          Feature 4
+        </li>
+      </ul>
+      <Button className="w-full bg-blue-600 text-white hover:bg-blue-700">
+        Subscribe
+      </Button>
     </div>
   );
 };
 
-export default SignUpForm;
+export default PricingCard;
